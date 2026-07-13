@@ -48,6 +48,11 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
   }
 
+  location = /flutter_service_worker.js {
+    add_header Cache-Control "no-store" always;
+    return 410;
+  }
+
   location /api/ {
     proxy_pass http://jstube-api:8085;
     proxy_set_header Host $host;
