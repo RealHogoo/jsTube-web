@@ -23,6 +23,7 @@ server {
   root /usr/share/nginx/html;
   index index.html;
   server_tokens off;
+  resolver 127.0.0.11 valid=10s ipv6=off;
   gzip on;
   gzip_comp_level 5;
   gzip_min_length 1024;
@@ -54,7 +55,8 @@ server {
   }
 
   location /api/ {
-    proxy_pass http://jstube-api:8085;
+    set $jstube_api http://jstube-api:8085;
+    proxy_pass $jstube_api;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
