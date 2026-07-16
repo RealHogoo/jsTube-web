@@ -835,10 +835,10 @@ function KaraokeTvPairingPage({ request }) {
         <div className="tv-player-screen">
           {currentItem?.content_url ? (
             <div className="video-interaction-lock">
-              <video
+              <AdaptiveVideo
+                item={currentItem}
                 key={mediaItemKey(currentItem)}
                 ref={videoRef}
-                src={playbackContentUrl(currentItem)}
                 controlsList="nodownload noplaybackrate noremoteplayback"
                 disablePictureInPicture
                 playsInline
@@ -1571,10 +1571,10 @@ function KaraokePage({ currentUser, request, tvMode = false }) {
             <div className="tv-player-screen">
               {currentItem?.content_url ? (
                 <div className="video-interaction-lock">
-                  <video
+                  <AdaptiveVideo
+                    item={currentItem}
                     key={mediaItemKey(currentItem)}
                     ref={videoRef}
-                    src={playbackContentUrl(currentItem)}
                     poster={hasVideoThumbnail(currentItem) ? currentItem.thumbnail_url : undefined}
                     controlsList="nodownload noplaybackrate noremoteplayback"
                     disablePictureInPicture
@@ -1746,10 +1746,10 @@ function KaraokePage({ currentUser, request, tvMode = false }) {
           <div className="karaoke-player">
             {currentItem?.content_url ? (
               <div className="video-interaction-lock">
-                <video
+                <AdaptiveVideo
+                  item={currentItem}
                   key={mediaItemKey(currentItem)}
                   ref={videoRef}
-                  src={playbackContentUrl(currentItem)}
                   poster={hasVideoThumbnail(currentItem) ? currentItem.thumbnail_url : undefined}
                   controlsList="nodownload noplaybackrate noremoteplayback"
                   disablePictureInPicture
@@ -2502,10 +2502,10 @@ function ViewerModal({ item, currentUser, onClose, onPatch, onCreateThumbnail, o
             {isYoutubeEmbed ? (
               <iframe className="detail-media youtube-frame" src={item.youtube_embed_url} title={item.title || item.display_name || "YouTube"} allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" />
             ) : isLocalVideo ? (
-              <video
+              <AdaptiveVideo
+                item={item}
                 ref={videoRef}
                 className="detail-media"
-                src={playbackContentUrl(item)}
                 poster={hasVideoThumbnail(item) ? item.thumbnail_url : undefined}
                 controls
                 controlsList="nodownload noplaybackrate noremoteplayback"
@@ -2973,6 +2973,108 @@ function playbackContentUrl(item, quality = preferredVideoQuality()) {
   return `${url}${separator}quality=${encodeURIComponent(quality)}`;
 }
 
+const AdaptiveVideo = React.forwardRef(function AdaptiveVideo({ item, ...props }, forwardedRef) {
+  const localRef = useRef(null);
+  const hlsRef = useRef(null);
+  const fallbackSrc = playbackContentUrl(item);
+  const hlsUrl = item?.content_kind === "VIDEO" ? String(item?.hls_url || "") : "";
+
+  useEffect(() => {
+    const video = localRef.current;
+    if (!video) return undefined;
+    let cancelled = false;
+    let usingFallback = false;
+
+    function fallbackToMp4() {
+      if (cancelled || usingFallback || !fallbackSrc) return;
+      usingFallback = true;
+      video.removeEventListener("error", fallbackToMp4);
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      video.src = fallbackSrc;
+      video.load();
+    }
+
+    if (!hlsUrl) {
+      fallbackToMp4();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    video.addEventListener("error", fallbackToMp4);
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = hlsUrl;
+      video.load();
+      return () => {
+        cancelled = true;
+        video.removeEventListener("error", fallbackToMp4);
+      };
+    }
+
+    loadHlsLibrary()
+      .then((Hls) => {
+        if (cancelled) return;
+        if (!Hls?.isSupported?.()) {
+          fallbackToMp4();
+          return;
+        }
+        const hls = new Hls({ enableWorker: true });
+        hlsRef.current = hls;
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data?.fatal) fallbackToMp4();
+        });
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+      })
+      .catch(fallbackToMp4);
+
+    return () => {
+      cancelled = true;
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      video.removeEventListener("error", fallbackToMp4);
+    };
+  }, [hlsUrl, fallbackSrc]);
+
+  return (
+    <video
+      {...props}
+      ref={(node) => {
+        localRef.current = node;
+        setForwardedRef(forwardedRef, node);
+      }}
+    />
+  );
+});
+
+function loadHlsLibrary() {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.Hls) return Promise.resolve(window.Hls);
+  if (window.__hlsLoaderPromise) return window.__hlsLoaderPromise;
+  window.__hlsLoaderPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
+    script.async = true;
+    script.onload = () => resolve(window.Hls || null);
+    script.onerror = () => reject(new Error("hls.js failed to load"));
+    document.head.appendChild(script);
+  });
+  return window.__hlsLoaderPromise;
+}
+
+function setForwardedRef(ref, value) {
+  if (typeof ref === "function") {
+    ref(value);
+  } else if (ref) {
+    ref.current = value;
+  }
+}
+
 function releaseMediaElement(video) {
   if (!video) return;
   try {
@@ -2988,7 +3090,8 @@ function tvPlayableItem(item, tvToken) {
   if (!item?.webhard_file_id || !tvToken) return item;
   return {
     ...item,
-    content_url: `${API_BASE}/api/karaoke/tv/session/${encodeURIComponent(tvToken)}/media/${item.webhard_file_id}/content-file/?quality=1080`
+    content_url: `${API_BASE}/api/karaoke/tv/session/${encodeURIComponent(tvToken)}/media/${item.webhard_file_id}/content-file/?quality=1080`,
+    hls_url: ""
   };
 }
 
