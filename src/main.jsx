@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Clock, Download, Heart, Image as ImageIcon, Info, ListMusic, Music, Pause, Play, Plus, RefreshCw, Search, SkipBack, SkipForward, Star, Tags, Trash2, Video, X } from "lucide-react";
+import Hls from "hls.js";
 import "./styles.css";
 
 const API_BASE = import.meta.env.VITE_MEDIA_API_BASE || "";
@@ -3054,17 +3055,7 @@ const AdaptiveVideo = React.forwardRef(function AdaptiveVideo({ item, ...props }
 
 function loadHlsLibrary() {
   if (typeof window === "undefined") return Promise.resolve(null);
-  if (window.Hls) return Promise.resolve(window.Hls);
-  if (window.__hlsLoaderPromise) return window.__hlsLoaderPromise;
-  window.__hlsLoaderPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js";
-    script.async = true;
-    script.onload = () => resolve(window.Hls || null);
-    script.onerror = () => reject(new Error("hls.js failed to load"));
-    document.head.appendChild(script);
-  });
-  return window.__hlsLoaderPromise;
+  return Promise.resolve(Hls);
 }
 
 function setForwardedRef(ref, value) {

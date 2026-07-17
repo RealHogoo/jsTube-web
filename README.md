@@ -32,13 +32,9 @@ In production the web container serves the built app and proxies `/api/` to
 `AdaptiveVideo` prefers `item.hls_url` for videos.
 
 - Safari and iPad use native HLS support.
-- Other browsers load `hls.js` at runtime and attach it to the video element.
+- Other browsers use the bundled `hls.js` dependency and attach it to the video element.
 - If HLS is unavailable or fails, playback falls back to `item.content_url`,
   which supports normal MP4 byte-range streaming through the API.
-
-The current app loads `hls.js` from a pinned CDN URL. If external script loading
-is blocked by a stricter production policy, bundle or self-host that asset before
-deploying the policy change.
 
 ## Local
 
